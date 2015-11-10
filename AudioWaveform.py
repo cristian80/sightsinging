@@ -1,7 +1,7 @@
 
 import numpy as np
 import pylab as plt
-import struct, wave
+import struct, wave, time
 import aubio
 
 
@@ -69,7 +69,7 @@ class AudioWaveform ():
 
 	def _record_pyaudio_stream (self, nframes):
 		print ("PyAudio ------")
-		self.framesize = 1024*16
+		self.framesize = 1024*64
 		self.in_format = pyaudio.paFloat32 #paInt8
 
 		p = pyaudio.PyAudio()
@@ -106,6 +106,45 @@ class AudioWaveform ():
 		self._waveform = sound
 		self._t = np.arange (0, len(self._waveform))/float(self.rate)
 
+	
+	def record_pyaudio_stream_callback (self):
+
+		self.framesize = 1024*4
+		self.in_format = pyaudio.paFloat32 #paInt8
+
+		p = pyaudio.PyAudio()
+
+		self._waveform = []
+		# callback function to stream audio, another thread.
+		def callback(in_data,frame_count, time_info, status):
+		    self.audio = np.fromstring(in_data,dtype=np.float32)
+		    self._waveform.append(self.audio)
+		    return (self.audio, pyaudio.paContinue)
+
+		#create a pyaudio object
+		self.inStream = p.open(format = self.in_format,
+		                       channels = self.channels,
+		                       rate= self.rate,
+		                       input=True,
+		                       frames_per_buffer=self.framesize,
+		                       stream_callback = callback)
+
+		#self.audio = np.empty((self.buffersize),dtype="float32")
+		self.inStream.start_stream()
+
+		while True:
+			try:
+				time.sleep (5)
+			except KeyboardInterrupt:
+			    self.inStream.stop_stream()
+			    self.inStream.close()
+			    p.terminate()
+			    print("* Killed Process")
+			    break
+		
+		self._waveform = np.array (self._waveform).flatten()
+		self._t = np.arange (0, len(self._waveform))/float(self.rate)
+
 
 	def plot_waveform (self, include_beats = True):
 
@@ -119,18 +158,18 @@ class AudioWaveform ():
 		plt.show()
 
 
-	def record_waveform (self, module = "pyaudio", nframes=20):
+	def record_waveform (self, module = "pyaudio", nframes=3):
 		self._mod = module
 
 		if (self._mod == "pyaudio"):
 			if (pyaudio_mod):
-				self._record_pyaudio_stream(nframes)
+				self.record_pyaudio_stream_callback ()#(nframes)
 				self._total_frames = len(self._waveform)
 			else:
 				print ("pyAudio not working!")
 		elif (self._mod == "alsa"):
 			if (alsa_mod):
-				self._record_alsa_stream(nframes)
+				self.record_alsa_stream(nframes)
 				self._total_frames = len(self._waveform)
 			else:
 				print ("AlsaAudio not working!")
@@ -430,7 +469,7 @@ wf.record_waveform()
 
 wf.plot_waveform()
 wf.fourier_filter()
-wf.remove_silence(threshold = 0.10, binsize = 200)
+#wf.remove_silence(threshold = 0.10, binsize = 200)
 wf.plot_waveform ()
 
 
@@ -440,12 +479,14 @@ wf.plot_waveform ()
 wf.pitch_extraction(tolerance =0.98)
 wf.median_filtering (k=15)
 
+'''
 wf.derivative ()
 wf.derivative ()
 wf.derivative ()
 wf.derivative ()
 wf.derivative ()
 wf.derivative ()
+'''
 
 wf.median_filtering (k=15)
 
